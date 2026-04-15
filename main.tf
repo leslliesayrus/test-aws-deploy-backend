@@ -15,6 +15,13 @@ terraform {
 
 provider "aws" {
   region = var.aws_region
+
+  default_tags {
+    tags = {
+      Environment = var.env_suffix
+      Project       = var.project_name
+    }
+  }
 }
 
 variable "aws_region" {
@@ -29,6 +36,21 @@ variable "project_name" {
   default     = "chat-demo"
 }
 
+variable "env_suffix" {
+  description = "Sufixo do ambiente: prd (produção / branch main) ou dev (demais branches)"
+  type        = string
+  default     = "dev"
+
+  validation {
+    condition     = contains(["prd", "dev"], var.env_suffix)
+    error_message = "env_suffix deve ser \"prd\" ou \"dev\"."
+  }
+}
+
+locals {
+  name_prefix = "${var.project_name}-${var.env_suffix}"
+}
+
 data "archive_file" "lambda_zip" {
   type        = "zip"
   source_dir  = "${path.module}/lambda"
@@ -36,7 +58,7 @@ data "archive_file" "lambda_zip" {
 }
 
 resource "aws_iam_role" "lambda" {
-  name = "${var.project_name}-lambda-role"
+  name = "${local.name_prefix}-lambda-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -56,7 +78,7 @@ resource "aws_iam_role_policy_attachment" "lambda_basic" {
 }
 
 resource "aws_lambda_function" "chat" {
-  function_name = "${var.project_name}-chat"
+  function_name = "${local.name_prefix}-chat"
   role          = aws_iam_role.lambda.arn
   handler       = "handler.lambda_handler"
   runtime       = "python3.12"
@@ -68,7 +90,7 @@ resource "aws_lambda_function" "chat" {
 }
 
 resource "aws_apigatewayv2_api" "http" {
-  name          = "${var.project_name}-http-api"
+  name          = "${local.name_prefix}-http-api"
   protocol_type = "HTTP"
 }
 
@@ -93,7 +115,7 @@ resource "aws_apigatewayv2_stage" "default" {
 }
 
 resource "aws_lambda_permission" "apigw_invoke" {
-  statement_id  = "AllowAPIGatewayInvoke"
+  statement_id  = "AllowAPIGatewayInvoke-${var.env_suffix}"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.chat.function_name
   principal     = "apigateway.amazonaws.com"
