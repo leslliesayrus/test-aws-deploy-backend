@@ -11,6 +11,13 @@ terraform {
       version = "~> 2.4"
     }
   }
+
+  backend "s3" {
+    bucket  = "bkt-terraform-backend"
+    region  = "us-east-1"
+    encrypt = true
+    key     = "test-aws-deploy-backend/dev/terraform.tfstate"
+  }
 }
 
 provider "aws" {

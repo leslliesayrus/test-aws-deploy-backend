@@ -41,8 +41,10 @@ jobs:
           terraform_version: "1.9.0"
           terraform_wrapper: false
 
-      - name: Terraform init
-        run: terraform init
+      - name: Terraform init (backend S3)
+        run: |
+          terraform init -input=false \
+            -backend-config="key=test-aws-deploy-backend/${TF_VAR_env_suffix}/terraform.tfstate"
 
       - name: Terraform apply (Lambda + API Gateway HTTP API)
         run: terraform apply -auto-approve
