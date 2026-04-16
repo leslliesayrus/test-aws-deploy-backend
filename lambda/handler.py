@@ -21,7 +21,7 @@ def lambda_handler(event, context):
         "ok": True,
         "echo": message,
         "hint": "Envie JSON com campo message no body.",
-    }
+    } 
 
     return {
         "statusCode": 200,
