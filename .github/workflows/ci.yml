@@ -1,0 +1,67 @@
+name: Terraform apply
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    env:
+      AWS_REGION: us-east-1
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Definir ambiente (prd na main, dev nas outras branches)
+        run: |
+          echo "TF_VAR_aws_region=${AWS_REGION}" >> "$GITHUB_ENV"
+          if [ "${GITHUB_REF}" = "refs/heads/main" ]; then
+            echo "TF_VAR_env_suffix=prd" >> "$GITHUB_ENV"
+            echo "DEPLOY_ENV=prd" >> "$GITHUB_ENV"
+          else
+            echo "TF_VAR_env_suffix=dev" >> "$GITHUB_ENV"
+            echo "DEPLOY_ENV=dev" >> "$GITHUB_ENV"
+          fi
+
+      - name: Configurar credenciais AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Instalar Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.0"
+          terraform_wrapper: false
+
+      - name: Terraform init (backend S3)
+        run: |
+          terraform init -input=false \
+            -backend-config="key=test-aws-deploy-backend/${TF_VAR_env_suffix}/terraform.tfstate"
+
+      - name: Terraform apply (Lambda + API Gateway HTTP API)
+        run: terraform apply -auto-approve
+
+      - name: Endpoints da API (deploy concluído)
+        run: |
+          echo "## API implantada" >> "$GITHUB_STEP_SUMMARY"
+          terraform output -no-color
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          terraform output -no-color >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Smoke test — POST /chat
+        run: |
+          CHAT_URL=$(terraform output -raw chat_url)
+          echo "Testando: ${CHAT_URL}"
+          curl -sS -f -X POST "${CHAT_URL}" \
+            -H "Content-Type: application/json" \
+            -d '{"message":"ci-deploy"}' \
+            | tee response.json
+          test -s response.json
